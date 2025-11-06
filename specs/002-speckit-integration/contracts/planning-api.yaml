@@ -1,0 +1,288 @@
+openapi: 3.0.3
+info:
+  title: Multi-Artifact Planning API
+  description: API for generating multiple planning artifacts (research, data-model, contracts, quickstart)
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000/api/v1
+
+paths:
+  /planning/artifacts:
+    post:
+      summary: Generate planning artifacts
+      description: Generate all planning artifacts for a feature
+      operationId: generatePlanningArtifacts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateArtifactsRequest'
+      responses:
+        '201':
+          description: Artifacts generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactsResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /planning/artifacts/{artifactId}:
+    get:
+      summary: Get artifact
+      description: Retrieve a specific planning artifact
+      operationId: getArtifact
+      parameters:
+        - name: artifactId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Artifact details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningArtifact'
+
+  /planning/research:
+    post:
+      summary: Generate research artifact
+      description: Generate research.md with technology decisions
+      operationId: generateResearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResearchRequest'
+      responses:
+        '201':
+          description: Research artifact generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningArtifact'
+
+  /planning/data-model:
+    post:
+      summary: Generate data model
+      description: Generate data-model.md with entities and relationships
+      operationId: generateDataModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataModelRequest'
+      responses:
+        '201':
+          description: Data model generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningArtifact'
+
+  /planning/contracts:
+    post:
+      summary: Generate API contracts
+      description: Generate OpenAPI or GraphQL schemas in contracts/ directory
+      operationId: generateContracts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractsRequest'
+      responses:
+        '201':
+          description: Contracts generated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningArtifact'
+
+  /planning/quickstart:
+    post:
+      summary: Generate quickstart
+      description: Generate quickstart.md with setup and integration guidance
+      operationId: generateQuickstart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuickstartRequest'
+      responses:
+        '201':
+          description: Quickstart generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningArtifact'
+
+components:
+  schemas:
+    GenerateArtifactsRequest:
+      type: object
+      required:
+        - featureId
+        - specPath
+      properties:
+        featureId:
+          type: string
+        specPath:
+          type: string
+        artifactTypes:
+          type: array
+          items:
+            type: string
+            enum: [RESEARCH, DATA_MODEL, CONTRACT, QUICKSTART]
+          default: [RESEARCH, DATA_MODEL, CONTRACT, QUICKSTART]
+
+    ResearchRequest:
+      type: object
+      required:
+        - featureId
+        - unknowns
+      properties:
+        featureId:
+          type: string
+        unknowns:
+          type: array
+          items:
+            type: string
+        technologies:
+          type: array
+          items:
+            type: string
+
+    DataModelRequest:
+      type: object
+      required:
+        - featureId
+        - entities
+      properties:
+        featureId:
+          type: string
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityDefinition'
+        requirements:
+          type: array
+          items:
+            type: string
+
+    EntityDefinition:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+
+    ContractsRequest:
+      type: object
+      required:
+        - featureId
+        - userActions
+      properties:
+        featureId:
+          type: string
+        userActions:
+          type: array
+          items:
+            type: string
+        contractFormat:
+          type: string
+          enum: [AUTO_DETECT, OPENAPI, GRAPHQL]
+          default: AUTO_DETECT
+
+    QuickstartRequest:
+      type: object
+      required:
+        - featureId
+      properties:
+        featureId:
+          type: string
+        dependencies:
+          type: array
+          items:
+            type: string
+
+    PlanningArtifact:
+      type: object
+      required:
+        - artifactId
+        - featureId
+        - artifactType
+        - filePath
+        - generatedAt
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+        featureId:
+          type: string
+        artifactType:
+          type: string
+          enum: [RESEARCH, DATA_MODEL, CONTRACT, QUICKSTART]
+        filePath:
+          type: string
+        content:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        dependencies:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ArtifactsResponse:
+      type: object
+      required:
+        - featureId
+        - artifacts
+      properties:
+        featureId:
+          type: string
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningArtifact'
+        totalGenerated:
+          type: integer
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
