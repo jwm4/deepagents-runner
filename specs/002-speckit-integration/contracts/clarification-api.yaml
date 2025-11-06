@@ -1,0 +1,351 @@
+openapi: 3.0.3
+info:
+  title: Clarification Workflow API
+  description: API for interactive specification clarification workflow
+  version: 1.0.0
+  contact:
+    name: SpecKit Integration
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+
+paths:
+  /clarification/sessions:
+    post:
+      summary: Create clarification session
+      description: Initiate a new interactive clarification session for a specification
+      operationId: createClarificationSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Clarification session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClarificationSession'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Spec file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /clarification/sessions/{sessionId}:
+    get:
+      summary: Get clarification session
+      description: Retrieve details of a clarification session
+      operationId: getClarificationSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClarificationSession'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /clarification/sessions/{sessionId}/questions/next:
+    get:
+      summary: Get next question
+      description: Retrieve the next unanswered question in the session
+      operationId: getNextQuestion
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Next question
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClarificationQuestion'
+        '404':
+          description: Session not found or no more questions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /clarification/sessions/{sessionId}/answers:
+    post:
+      summary: Submit answer
+      description: Submit user's answer to a clarification question
+      operationId: submitAnswer
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAnswerRequest'
+      responses:
+        '200':
+          description: Answer recorded and spec updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerResponse'
+        '400':
+          description: Invalid answer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /clarification/sessions/{sessionId}/complete:
+    post:
+      summary: Complete session
+      description: Mark clarification session as complete
+      operationId: completeSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionSummary'
+
+components:
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required:
+        - featureId
+        - specPath
+      properties:
+        featureId:
+          type: string
+          pattern: '^\d{3}-[a-z0-9-]+$'
+          example: '002-speckit-integration'
+        specPath:
+          type: string
+          example: '/specs/002-speckit-integration/spec.md'
+        questionLimit:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 5
+
+    ClarificationSession:
+      type: object
+      required:
+        - sessionId
+        - featureId
+        - timestamp
+        - status
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        featureId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        specPath:
+          type: string
+        questionsAsked:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClarificationQuestion'
+        answersProvided:
+          type: array
+          items:
+            $ref: '#/components/schemas/Answer'
+        sectionsUpdated:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, CANCELLED]
+        questionLimit:
+          type: integer
+
+    ClarificationQuestion:
+      type: object
+      required:
+        - questionId
+        - text
+        - recommendedAnswer
+        - options
+        - impactCategory
+      properties:
+        questionId:
+          type: string
+          pattern: '^Q\d+$'
+          example: 'Q1'
+        sessionId:
+          type: string
+          format: uuid
+        text:
+          type: string
+          maxLength: 500
+        recommendedAnswer:
+          type: string
+        options:
+          type: array
+          minItems: 2
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/QuestionOption'
+        impactCategory:
+          type: string
+          enum: [SCOPE, SECURITY, UX, TECHNICAL]
+        allowCustomAnswer:
+          type: boolean
+          default: true
+        maxAnswerWords:
+          type: integer
+          default: 5
+        answer:
+          type: string
+          nullable: true
+        answeredAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    QuestionOption:
+      type: object
+      required:
+        - optionId
+        - label
+        - description
+      properties:
+        optionId:
+          type: string
+          pattern: '^[A-E]$'
+          example: 'A'
+        questionId:
+          type: string
+        label:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 300
+        isRecommended:
+          type: boolean
+          default: false
+
+    SubmitAnswerRequest:
+      type: object
+      required:
+        - questionId
+        - answer
+      properties:
+        questionId:
+          type: string
+          pattern: '^Q\d+$'
+        answer:
+          type: string
+
+    Answer:
+      type: object
+      required:
+        - questionId
+        - answerText
+      properties:
+        questionId:
+          type: string
+        answerText:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+
+    AnswerResponse:
+      type: object
+      required:
+        - questionId
+        - recorded
+        - sectionsUpdated
+      properties:
+        questionId:
+          type: string
+        recorded:
+          type: boolean
+        sectionsUpdated:
+          type: array
+          items:
+            type: string
+        nextQuestion:
+          $ref: '#/components/schemas/ClarificationQuestion'
+          nullable: true
+
+    SessionSummary:
+      type: object
+      required:
+        - sessionId
+        - questionsAnswered
+        - sectionsUpdated
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        questionsAnswered:
+          type: integer
+        sectionsUpdated:
+          type: array
+          items:
+            type: string
+        clarificationsAdded:
+          type: integer
+        updatedSpecPath:
+          type: string
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true

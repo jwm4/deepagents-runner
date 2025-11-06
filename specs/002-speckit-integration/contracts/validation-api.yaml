@@ -1,0 +1,379 @@
+openapi: 3.0.3
+info:
+  title: Quality Validation API
+  description: API for specification validation, checklist generation, and coverage analysis
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000/api/v1
+
+paths:
+  /validation/spec:
+    post:
+      summary: Validate specification
+      description: Validate spec quality against criteria
+      operationId: validateSpec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateSpecRequest'
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
+
+  /validation/checklists:
+    post:
+      summary: Generate checklist
+      description: Generate requirements quality checklist
+      operationId: generateChecklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateChecklistRequest'
+      responses:
+        '201':
+          description: Checklist generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checklist'
+
+  /validation/checklists/{checklistId}:
+    get:
+      summary: Get checklist
+      description: Retrieve checklist details
+      operationId: getChecklist
+      parameters:
+        - name: checklistId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Checklist details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checklist'
+
+  /validation/checklists/{checklistId}/items/{itemId}:
+    patch:
+      summary: Update checklist item
+      description: Mark item as checked or add notes
+      operationId: updateChecklistItem
+      parameters:
+        - name: checklistId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateItemRequest'
+      responses:
+        '200':
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItem'
+
+  /validation/analyze:
+    post:
+      summary: Analyze coverage and consistency
+      description: Detect coverage gaps, duplications, and inconsistencies
+      operationId: analyzeFeature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+      responses:
+        '200':
+          description: Analysis report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisReport'
+
+  /validation/constitution:
+    post:
+      summary: Check constitution alignment
+      description: Validate plan against constitution principles
+      operationId: checkConstitution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstitutionCheckRequest'
+      responses:
+        '200':
+          description: Constitution check results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstitutionCheckResult'
+
+components:
+  schemas:
+    ValidateSpecRequest:
+      type: object
+      required:
+        - specPath
+      properties:
+        specPath:
+          type: string
+        criteria:
+          type: array
+          items:
+            type: string
+            enum: [NO_IMPLEMENTATION_DETAILS, TESTABLE_REQUIREMENTS, MEASURABLE_SUCCESS_CRITERIA, TECHNOLOGY_AGNOSTIC]
+
+    ValidationReport:
+      type: object
+      required:
+        - specPath
+        - passed
+        - findings
+      properties:
+        specPath:
+          type: string
+        passed:
+          type: boolean
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationFinding'
+        iterationCount:
+          type: integer
+        fixedIssues:
+          type: array
+          items:
+            type: string
+
+    ValidationFinding:
+      type: object
+      required:
+        - findingId
+        - category
+        - severity
+        - location
+        - description
+      properties:
+        findingId:
+          type: string
+        featureId:
+          type: string
+        category:
+          type: string
+          enum: [DUPLICATION, AMBIGUITY, UNDERSPECIFICATION, CONSTITUTION_VIOLATION, COVERAGE_GAP, INCONSISTENCY]
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        location:
+          type: string
+        description:
+          type: string
+        recommendation:
+          type: string
+        detectedAt:
+          type: string
+          format: date-time
+
+    GenerateChecklistRequest:
+      type: object
+      required:
+        - featureId
+        - focusArea
+      properties:
+        featureId:
+          type: string
+        focusArea:
+          type: string
+        depth:
+          type: string
+          enum: [LIGHTWEIGHT, STANDARD, FORMAL]
+          default: STANDARD
+        audience:
+          type: string
+          enum: [AUTHOR, REVIEWER, QA, RELEASE]
+          default: REVIEWER
+
+    Checklist:
+      type: object
+      required:
+        - checklistId
+        - featureId
+        - focusArea
+        - items
+      properties:
+        checklistId:
+          type: string
+          format: uuid
+        featureId:
+          type: string
+        focusArea:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistItem'
+        traceabilityPercentage:
+          type: number
+          format: float
+        completionPercentage:
+          type: number
+          format: float
+
+    ChecklistItem:
+      type: object
+      required:
+        - itemId
+        - question
+        - qualityDimension
+      properties:
+        itemId:
+          type: string
+          pattern: '^CHK\d{3}$'
+        checklistId:
+          type: string
+          format: uuid
+        question:
+          type: string
+        qualityDimension:
+          type: string
+          enum: [COMPLETENESS, CLARITY, CONSISTENCY, ACCEPTANCE_CRITERIA, SCENARIO_COVERAGE, EDGE_CASE_COVERAGE, NON_FUNCTIONAL, DEPENDENCIES, AMBIGUITIES]
+        specReference:
+          type: string
+          nullable: true
+        isChecked:
+          type: boolean
+          default: false
+        notes:
+          type: string
+
+    UpdateItemRequest:
+      type: object
+      properties:
+        isChecked:
+          type: boolean
+        notes:
+          type: string
+
+    AnalyzeRequest:
+      type: object
+      required:
+        - featureId
+      properties:
+        featureId:
+          type: string
+        includeConstitution:
+          type: boolean
+          default: true
+
+    AnalysisReport:
+      type: object
+      required:
+        - featureId
+        - findings
+        - coverageSummary
+      properties:
+        featureId:
+          type: string
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationFinding'
+        coverageSummary:
+          type: object
+          properties:
+            totalRequirements:
+              type: integer
+            totalTasks:
+              type: integer
+            coveragePercentage:
+              type: number
+              format: float
+            unmappedRequirements:
+              type: array
+              items:
+                type: string
+            unmappedTasks:
+              type: array
+              items:
+                type: string
+        metrics:
+          type: object
+          properties:
+            ambiguityCount:
+              type: integer
+            duplicationCount:
+              type: integer
+            criticalIssues:
+              type: integer
+
+    ConstitutionCheckRequest:
+      type: object
+      required:
+        - featureId
+        - planPath
+      properties:
+        featureId:
+          type: string
+        planPath:
+          type: string
+        constitutionPath:
+          type: string
+          default: '.specify/memory/constitution.md'
+
+    ConstitutionCheckResult:
+      type: object
+      required:
+        - passed
+        - violations
+      properties:
+        passed:
+          type: boolean
+        constitutionExists:
+          type: boolean
+        violations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationFinding'
+        warningLogged:
+          type: boolean
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string

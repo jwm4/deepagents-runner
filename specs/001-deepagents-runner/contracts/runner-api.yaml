@@ -1,0 +1,579 @@
+# Internal Component Contracts
+# DeepAgents Runner - Component Interfaces
+# Date: 2025-11-05
+
+## Core Components
+
+### AgentManager
+
+**Purpose**: Manage agent definitions, selection, and execution
+
+**Interface**:
+```python
+class AgentManager:
+    def load_agent_definitions(self, agents_dir: Path) -> dict[str, AgentDefinition]:
+        """
+        Load all agent definition files from the agents/ directory.
+
+        Args:
+            agents_dir: Path to directory containing .md agent files
+
+        Returns:
+            Dict mapping agent name to AgentDefinition
+
+        Raises:
+            AgentDefinitionError: If agent file is malformed
+        """
+
+    def select_agents(
+        self,
+        task_type: str,
+        required_capabilities: list[str]
+    ) -> list[AgentDefinition]:
+        """
+        Select appropriate agents for a task based on capabilities.
+
+        Args:
+            task_type: Type of task (e.g., "plan", "implement")
+            required_capabilities: Required agent capabilities
+
+        Returns:
+            List of agents sorted by specialization score (highest first)
+        """
+
+    async def execute_agent(
+        self,
+        agent_def: AgentDefinition,
+        task: str,
+        context: dict
+    ) -> AgentOutput:
+        """
+        Execute a single agent with the given task.
+
+        Args:
+            agent_def: Agent definition
+            task: Task description
+            context: Additional context (feature info, state, etc.)
+
+        Returns:
+            AgentOutput with results and metadata
+
+        Raises:
+            AgentExecutionError: If agent fails after retries
+        """
+
+    async def execute_agents_parallel(
+        self,
+        agents_tasks: list[tuple[AgentDefinition, str]],
+        dependencies: dict[str, list[str]]
+    ) -> dict[str, AgentOutput]:
+        """
+        Execute multiple agents in parallel with dependency tracking.
+
+        Args:
+            agents_tasks: List of (agent, task) tuples
+            dependencies: Map of agent_name to list of prerequisite agent_names
+
+        Returns:
+            Dict mapping agent_name to AgentOutput
+        """
+```
+
+**Events**:
+- `agent_started(agent_name: str, task: str)` - Agent execution begins
+- `agent_progress(agent_name: str, progress: float)` - Progress update
+- `agent_completed(agent_name: str, output: AgentOutput)` - Agent finishes
+- `agent_failed(agent_name: str, error: Exception)` - Agent encounters error
+- `agent_fallback(specialized: str, generic: str)` - Fallback to generic agent
+
+---
+
+### CommandExecutor
+
+**Purpose**: Execute SpecKit commands and coordinate agents
+
+**Interface**:
+```python
+class CommandExecutor:
+    def execute_command(
+        self,
+        command: CommandType,
+        feature: Feature,
+        args: dict
+    ) -> CommandResult:
+        """
+        Execute a SpecKit command.
+
+        Args:
+            command: Command type (specify, plan, tasks, etc.)
+            feature: Feature context
+            args: Command-specific arguments
+
+        Returns:
+            CommandResult with output artifacts and status
+
+        Raises:
+            CommandExecutionError: If command fails
+        """
+
+    async def execute_specify(self, feature: Feature, description: str) -> Path:
+        """Execute /speckit.specify command"""
+
+    async def execute_plan(self, feature: Feature) -> tuple[Path, Path]:
+        """Execute /speckit.plan command - returns (plan.md, research.md)"""
+
+    async def execute_tasks(self, feature: Feature) -> Path:
+        """Execute /speckit.tasks command"""
+
+    async def execute_implement(self, feature: Feature, task_ids: list[str]) -> dict:
+        """Execute /speckit.implement command"""
+
+    async def execute_clarify(self, feature: Feature) -> Path:
+        """Execute /speckit.clarify command"""
+```
+
+**Events**:
+- `command_started(command: CommandType, feature_id: str)`
+- `command_progress(command: CommandType, progress: float, message: str)`
+- `command_completed(command: CommandType, artifacts: list[Path])`
+- `command_failed(command: CommandType, error: Exception)`
+
+---
+
+### StateManager
+
+**Purpose**: Persist and restore workflow state
+
+**Interface**:
+```python
+class StateManager:
+    def load_workflow_state(self, feature: Feature) -> WorkflowState:
+        """
+        Load workflow state from .state/workflow.json
+
+        Args:
+            feature: Feature to load state for
+
+        Returns:
+            WorkflowState object
+
+        Raises:
+            StateLoadError: If state file is corrupted
+        """
+
+    def save_workflow_state(self, state: WorkflowState) -> None:
+        """
+        Save workflow state to .state/workflow.json
+
+        Args:
+            state: WorkflowState to persist
+
+        Raises:
+            StateSaveError: If unable to write state file
+        """
+
+    def create_checkpoint(self, feature: Feature, command: CommandType) -> None:
+        """
+        Create a checkpoint after successful command execution
+
+        Args:
+            feature: Feature context
+            command: Command that was executed
+        """
+
+    def restore_checkpoint(self, feature: Feature) -> WorkflowState:
+        """
+        Restore state from last successful checkpoint
+
+        Args:
+            feature: Feature to restore
+
+        Returns:
+            WorkflowState from checkpoint
+        """
+
+    def acquire_lock(self, feature: Feature) -> bool:
+        """
+        Acquire file-based lock to prevent concurrent execution
+
+        Args:
+            feature: Feature to lock
+
+        Returns:
+            True if lock acquired, False if already locked
+        """
+
+    def release_lock(self, feature: Feature) -> None:
+        """Release file-based lock"""
+```
+
+---
+
+### ContextDetector
+
+**Purpose**: Detect feature context from git branch
+
+**Interface**:
+```python
+class ContextDetector:
+    def detect_feature_from_branch(self) -> Optional[Feature]:
+        """
+        Detect feature from current git branch name.
+
+        Returns:
+            Feature object if branch matches [number]-[name] pattern, None otherwise
+        """
+
+    def list_available_features(self) -> list[Feature]:
+        """
+        List all features in specs/ directory.
+
+        Returns:
+            List of Feature objects
+        """
+
+    def prompt_feature_selection(self, features: list[Feature]) -> Feature:
+        """
+        Prompt user to select a feature interactively.
+
+        Args:
+            features: List of available features
+
+        Returns:
+            Selected Feature object
+        """
+```
+
+---
+
+### LLMProviderFactory
+
+**Purpose**: Create and configure LLM provider clients
+
+**Interface**:
+```python
+class LLMProviderFactory:
+    def create_provider(
+        self,
+        config: LLMProviderConfiguration
+    ) -> LLMProvider:
+        """
+        Create an LLM provider client.
+
+        Args:
+            config: Provider configuration
+
+        Returns:
+            LLMProvider instance (AnthropicProvider or OpenAIProvider)
+
+        Raises:
+            ProviderConfigError: If configuration is invalid
+            ProviderNotAvailableError: If API key not set
+        """
+
+    def get_default_provider(self) -> LLMProvider:
+        """
+        Get default provider from environment variables.
+
+        Returns:
+            LLMProvider instance based on available API keys
+
+        Precedence:
+            1. ANTHROPIC_API_KEY (if set, use Anthropic)
+            2. OPENAI_API_KEY (if set, use OpenAI)
+            3. Error if neither set
+        """
+```
+
+---
+
+### LLMProvider (Abstract Base)
+
+**Purpose**: Abstract interface for LLM providers
+
+**Interface**:
+```python
+from abc import ABC, abstractmethod
+
+class LLMProvider(ABC):
+    @abstractmethod
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 4096
+    ) -> str:
+        """
+        Generate text from LLM.
+
+        Args:
+            system_prompt: System/role instructions
+            user_prompt: User input
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Generated text
+
+        Raises:
+            RateLimitError: If rate limit exceeded
+            TimeoutError: If request times out
+            ProviderError: Other provider errors
+        """
+
+    @abstractmethod
+    async def stream_generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 4096
+    ) -> AsyncIterator[str]:
+        """
+        Stream text generation from LLM.
+
+        Args:
+            system_prompt: System/role instructions
+            user_prompt: User input
+            max_tokens: Maximum tokens to generate
+
+        Yields:
+            Text chunks as they're generated
+        """
+
+    @abstractmethod
+    def get_provider_name(self) -> str:
+        """Return provider name (e.g., 'anthropic', 'openai')"""
+```
+
+---
+
+### TerminalUI
+
+**Purpose**: Display progress and output in terminal
+
+**Interface**:
+```python
+class TerminalUI:
+    def display_welcome(self, feature: Feature, provider: str) -> None:
+        """Display welcome screen with feature context"""
+
+    def display_command_prompt(self) -> None:
+        """Display command input prompt"""
+
+    def start_progress_display(self) -> None:
+        """Initialize live progress display"""
+
+    def update_agent_status(
+        self,
+        agent_name: str,
+        status: str,
+        task: str
+    ) -> None:
+        """Update agent's status in progress display"""
+
+    def display_output(self, content: str) -> None:
+        """Display command output"""
+
+    def display_error(self, error: str) -> None:
+        """Display error message"""
+
+    def stop_progress_display(self) -> None:
+        """Stop and clear progress display"""
+```
+
+---
+
+### REPLSession
+
+**Purpose**: Manage interactive terminal session
+
+**Interface**:
+```python
+class REPLSession:
+    def start(self) -> None:
+        """
+        Start interactive REPL session.
+
+        Flow:
+        1. Detect feature context (or prompt for selection)
+        2. Display welcome screen
+        3. Enter command loop
+        4. Execute commands
+        5. Handle interrupts and exit
+        """
+
+    def read_command(self) -> str:
+        """Read command from user input"""
+
+    def parse_command(self, input: str) -> tuple[CommandType, dict]:
+        """Parse command and extract arguments"""
+
+    def execute_command(self, command: CommandType, args: dict) -> None:
+        """Execute parsed command"""
+
+    def handle_error(self, error: Exception) -> None:
+        """Handle command execution errors"""
+
+    def shutdown(self) -> None:
+        """Clean shutdown of REPL session"""
+```
+
+---
+
+## Data Contracts
+
+### AgentDefinition
+
+```python
+@dataclass
+class AgentDefinition:
+    name: str              # e.g., "archie-architect"
+    role: str              # e.g., "architect"
+    specialization: str    # e.g., "system_architecture"
+    capabilities: list[str]  # e.g., ["architecture", "scalability"]
+    priority: int          # Specialization level (1-10)
+    system_prompt: str     # Full prompt template
+```
+
+### AgentOutput
+
+```python
+@dataclass
+class AgentOutput:
+    agent_name: str
+    content: str
+    recommendations: list[str]
+    confidence_level: float  # 0.0 to 1.0
+    metadata: dict
+    tokens_used: int | None
+    created_at: datetime
+```
+
+### CommandResult
+
+```python
+@dataclass
+class CommandResult:
+    command: CommandType
+    status: ExecutionStatus
+    artifacts: list[Path]  # Generated files
+    duration_seconds: float
+    error_message: str | None
+```
+
+---
+
+## Error Hierarchy
+
+```python
+class RunnerError(Exception):
+    """Base exception for all runner errors"""
+
+class AgentError(RunnerError):
+    """Agent-related errors"""
+
+class AgentDefinitionError(AgentError):
+    """Agent definition file is malformed"""
+
+class AgentExecutionError(AgentError):
+    """Agent execution failed"""
+
+class CommandError(RunnerError):
+    """Command execution errors"""
+
+class CommandExecutionError(CommandError):
+    """Command failed during execution"""
+
+class StateError(RunnerError):
+    """State management errors"""
+
+class StateLoadError(StateError):
+    """Failed to load state file"""
+
+class StateSaveError(StateError):
+    """Failed to save state file"""
+
+class ProviderError(RunnerError):
+    """LLM provider errors"""
+
+class ProviderConfigError(ProviderError):
+    """Provider configuration is invalid"""
+
+class ProviderNotAvailableError(ProviderError):
+    """Provider API key not set or provider unavailable"""
+
+class RateLimitError(ProviderError):
+    """Provider rate limit exceeded"""
+```
+
+---
+
+## Component Dependencies
+
+```
+REPLSession
+    ├── ContextDetector
+    ├── TerminalUI
+    └── CommandExecutor
+            ├── AgentManager
+            │   └── LLMProviderFactory
+            │       └── LLMProvider (Anthropic/OpenAI)
+            └── StateManager
+```
+
+---
+
+## Usage Examples
+
+### Starting a REPL Session
+
+```python
+from deepagents_runner.terminal import REPLSession
+
+session = REPLSession()
+session.start()  # Detects context, displays welcome, enters command loop
+```
+
+### Executing a Command Programmatically
+
+```python
+from deepagents_runner.core import CommandExecutor, ContextDetector
+from deepagents_runner.models import CommandType
+
+# Detect feature
+detector = ContextDetector()
+feature = detector.detect_feature_from_branch()
+
+# Execute command
+executor = CommandExecutor()
+result = await executor.execute_command(
+    command=CommandType.SPECIFY,
+    feature=feature,
+    args={"description": "Add user authentication"}
+)
+
+print(f"Generated: {result.artifacts}")
+```
+
+### Loading Agent and Executing Task
+
+```python
+from deepagents_runner.core import AgentManager
+
+manager = AgentManager()
+agents = manager.load_agent_definitions(Path("src/agents"))
+
+# Select agents for planning
+selected = manager.select_agents(
+    task_type="plan",
+    required_capabilities=["architecture", "scalability"]
+)
+
+# Execute agent
+output = await manager.execute_agent(
+    agent_def=selected[0],
+    task="Design architecture for user authentication",
+    context={"feature": feature}
+)
+
+print(output.content)
+```
